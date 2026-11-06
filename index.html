@@ -4632,6 +4632,15 @@ const ctContracts=[
  {id:'CT20250101',company:'华信科技',units:'1801、1803',start:'2025-10-01',end:'2027-09-30',rent:'¥ 86,000',deposit:55860,freeDays:30,status:'履行中',attachments:[]},
  {id:'CT20250102',company:'启明咨询',units:'1201',start:'2025-12-01',end:'2026-11-30',rent:'¥ 36,000',status:'待续租',attachments:[]}
 ];
+const ctDemoContracts=[
+ {"id":"CT-DEMO-0302","company":"远景咨询（示例）","units":"302、303","start":"2025-10-01","end":"2027-09-30","rent":"¥ 28,050.00","deposit":84150,"freeDays":30,"status":"履行中","demo":true,"attachments":[{"id":"CTF-DEMO-302-303","name":"办公物业租赁合同-302-303-示例.pdf","size":71209,"type":"application/pdf","viewKind":"pdf","url":"assets/contracts/demo-lease-302-303.pdf","kind":"签署合同","demo":true,"note":"预置示例合同正文，无真实签章。","uploadedAt":"2026-11-06T00:00:00+08:00","uploader":"示例资料","fingerprint":"demo-CT-DEMO-0302"}]},
+ {"id":"CT-DEMO-0305","company":"明远商务（示例）","units":"305","start":"2025-10-01","end":"2027-09-30","rent":"¥ 16,800.00","deposit":50400,"freeDays":15,"status":"履行中","demo":true,"attachments":[{"id":"CTF-DEMO-305","name":"办公物业租赁合同-305-示例.pdf","size":70585,"type":"application/pdf","viewKind":"pdf","url":"assets/contracts/demo-lease-305.pdf","kind":"签署合同","demo":true,"note":"预置示例合同正文，无真实签章。","uploadedAt":"2026-11-06T00:00:00+08:00","uploader":"示例资料","fingerprint":"demo-CT-DEMO-0305"}]},
+ {"id":"CT-DEMO-0306","company":"嘉和企业（示例）","units":"306","start":"2025-12-16","end":"2026-12-15","rent":"¥ 25,650.00","deposit":76950,"freeDays":30,"status":"履行中","demo":true,"attachments":[{"id":"CTF-DEMO-306","name":"办公物业租赁合同-306-示例.pdf","size":70714,"type":"application/pdf","viewKind":"pdf","url":"assets/contracts/demo-lease-306.pdf","kind":"签署合同","demo":true,"note":"预置示例合同正文，无真实签章。","uploadedAt":"2026-11-06T00:00:00+08:00","uploader":"示例资料","fingerprint":"demo-CT-DEMO-0306"}]},
+ {"id":"CT-DEMO-0310","company":"恒诚实业（示例）","units":"310、311","start":"2025-10-01","end":"2027-09-30","rent":"¥ 28,350.00","deposit":85050,"freeDays":30,"status":"履行中","demo":true,"attachments":[{"id":"CTF-DEMO-310-311","name":"办公物业租赁合同-310-311-示例.pdf","size":70838,"type":"application/pdf","viewKind":"pdf","url":"assets/contracts/demo-lease-310-311.pdf","kind":"签署合同","demo":true,"note":"预置示例合同正文，无真实签章。","uploadedAt":"2026-11-06T00:00:00+08:00","uploader":"示例资料","fingerprint":"demo-CT-DEMO-0310"}]},
+ {"id":"CT-DEMO-0401","company":"启明商务（示例）","units":"401","start":"2025-11-16","end":"2026-11-15","rent":"¥ 12,750.00","deposit":38250,"freeDays":15,"status":"待续租","demo":true,"attachments":[{"id":"CTF-DEMO-401","name":"办公物业租赁合同-401-示例.pdf","size":70431,"type":"application/pdf","viewKind":"pdf","url":"assets/contracts/demo-lease-401.pdf","kind":"签署合同","demo":true,"note":"预置示例合同正文，无真实签章。","uploadedAt":"2026-11-06T00:00:00+08:00","uploader":"示例资料","fingerprint":"demo-CT-DEMO-0401"}]}
+];
+const ctDemoAttachmentURLs=new Set(ctDemoContracts.flatMap(c=>c.attachments.map(file=>file.url)));
+ctContracts.push(...ctDemoContracts);
 const ctState={sequence:0,error:'',preview:null,focus:null};
 function ctFind(id){return ctContracts.find(c=>c.id===id);}
 function ctUnitIds(contract){return String(contract?.units||'').split(/[、,，/]/).map(v=>v.trim()).filter(Boolean);}
@@ -4694,7 +4703,7 @@ function ctSubmitUpload(){
  $('#modal')?.close?.();render();ctDetail(id);toast('合同附件已上传');return true;
 }
 function ctOpenAttachment(id,fileId){
- if(!ctCanRead(id))return;const contract=ctFind(id),file=contract.attachments.find(f=>f.id===fileId);if(!file||!/^blob:[^\s"'<>]+$/.test(file.url))return;
+ if(!ctCanRead(id))return;const contract=ctFind(id),file=contract.attachments.find(f=>f.id===fileId);if(!file||!(/^blob:[^\s"'<>]+$/.test(file.url)||file.demo===true&&ctDemoAttachmentURLs.has(file.url)))return;
  ctState.focus=document.activeElement;ctState.preview={id,fileId};const target=$('#contract-file-dialog');if(!target)return;
  const download=`<a class="ct-download" href="${esc(file.url)}" download="${esc(file.name)}">下载附件</a>`;
  target.innerHTML=`<div class="ct-viewer"><header><div><span>${esc(contract.id)} · ${esc(file.kind)}</span><strong data-i18n-skip>${esc(file.name)}</strong></div><button type="button" onclick="ctClosePreview()" aria-label="关闭附件预览">${bGlobalIcon('close')}</button></header><div class="ct-viewer-stage ${file.viewKind}">${file.viewKind==='image'?`<img src="${esc(file.url)}" alt="${esc(file.name)}">`:file.viewKind==='pdf'?`<iframe src="${esc(file.url)}#toolbar=1" title="合同 PDF 预览"></iframe>`:`<div class="ct-word-preview"><div>WORD</div><h2>Word 合同文件</h2><p>此格式需下载后使用 Word 查看。</p>${download}</div>`}</div><footer><span>${ctSize(file.size)}</span>${file.viewKind==='word'?'':download}</footer></div>`;
