@@ -1,2 +1,9 @@
-# Property-preview
-Public static preview of the property management prototype
+# 金卫物业管理系统 · 公开预览
+
+此仓库仅发布交互原型的静态网页与图片，不包含私有仓库的 Git 历史、备份和测试文件。
+
+在线预览：https://dengyeqiang.github.io/Property-preview/
+
+演示账号：`admin`，演示密码：`123456`。登录页可选择演示岗位。
+
+包含物业运营后台、租户服务、招商及工程工单小程序的设计演示。物联设备、支付和微信消息接口仍为演示配置。
