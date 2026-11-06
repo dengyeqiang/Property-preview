@@ -994,6 +994,15 @@ dialog :is(.dialogbody,.ct-viewer-stage)::-webkit-scrollbar-button{display:none;
 @media(prefers-reduced-motion:reduce){#o-pt-rules-form .pt-rule-switch>span,#o-pt-rules-form .pt-rule-switch>span:before{transition:none}}
 .fm-filters>label{margin:0}.fm-filters>button{height:40px;margin:0}.fm-filters .push{flex:1}
 .ct-register-panel .ui-row-actions{max-width:none;flex-wrap:nowrap}
+.cp-new-options{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.cp-new-options>button{display:grid;grid-template-columns:42px minmax(0,1fr);gap:8px 14px;align-content:center;min-height:142px;padding:22px;text-align:left;background:#f7faf3;border:1px solid #dce7d3;border-radius:12px;color:#315f43;box-shadow:none}
+.cp-new-options>button:hover{background:#eef5e7;border-color:#acc59c}
+.cp-new-option-icon{grid-row:1/3;display:grid;place-items:center;width:42px;height:42px;border-radius:10px;background:#e5eedc;color:#608549}
+.cp-new-options>button:last-child .cp-new-option-icon{background:#f1ead7;color:#a78944}
+.cp-new-options strong{font-size:17px;font-weight:600}
+.cp-new-options small{font-size:13px;line-height:1.8;color:#849575}
+#cp-create-form .cp-new-unit-field{grid-column:1/-1}
+@media(max-width:700px){.cp-new-options{grid-template-columns:1fr}.cp-new-options>button{min-height:115px;padding:18px}}
 .en-tour-controls{display:flex;align-items:center;gap:8px;margin-top:15px;padding-top:12px;border-top:1px solid var(--en-edge);color:var(--en-muted);font-size:12px}
 .en-tour-controls>span{margin-right:auto;white-space:nowrap;font-variant-numeric:tabular-nums}
 .en-cockpit .en-tour-controls>button{min-height:30px;padding:4px 9px;font-size:12px;line-height:1.5;background:#f5f8f3;color:var(--en-green);border:1px solid var(--en-edge);border-radius:6px;box-shadow:none}
@@ -4512,7 +4521,7 @@ function aValidateRows(rows){
 function aParseCSV(text,kind='asset'){
  if(typeof text!=='string'||text.length>2*1024*1024)throw new Error('CSV 文件须小于 2 MB');
  const source=text.replace(/^\uFEFF/,''),records=[];let row=[],value='',quoted=false,closed=false;
- const cell=()=>{row.push(value);value='';closed=false;},line=()=>{cell();if(row.some(v=>v.trim()))records.push(row);row=[];if(records.length>201)throw new Error(kind==='bill'?'每批最多导入 200 条账单':'每批最多导入 200 条资产');};
+ const cell=()=>{row.push(value);value='';closed=false;},line=()=>{cell();if(row.some(v=>v.trim()))records.push(row);row=[];if(records.length>201)throw new Error('每批最多导入 200 条'+({bill:'账单',customer:'客户'}[kind]||'资产'));};
  for(let i=0;i<source.length;i++){
   const c=source[i];
   if(quoted){if(c==='"'){if(source[i+1]==='"'){value+='"';i++;}else{quoted=false;closed=true;}}else value+=c;continue;}
@@ -4524,8 +4533,9 @@ function aParseCSV(text,kind='asset'){
  }
  if(quoted)throw new Error('CSV 引号未闭合');
  if(value||row.length||closed)line();
- if(records.length<2)throw new Error(kind==='bill'?'CSV 须包含表头和至少一条账单':'CSV 须包含表头和至少一条资产');
+ if(records.length<2)throw new Error('CSV 须包含表头和至少一条'+({bill:'账单',customer:'客户'}[kind]||'资产'));
  if(kind==='bill')return blParseImportRows(records);
+ if(kind==='customer')return cpParseImportRows(records);
  const aliases={'楼层':'number','单元编号':'ids','合同面积(㎡)':'area','合同面积':'area','产权归属':'ownership','用途':'usage','出租状态':'status','租户':'tenant','合同到期':'expiry'},headers=records.shift().map(h=>aliases[h.trim().replace(/（/g,'(').replace(/）/g,')')]);
  if(headers.some(h=>!h)||new Set(headers).size!==headers.length||['number','ids','area','status'].some(h=>!headers.includes(h)))throw new Error('请使用模板表头，至少包含楼层、单元编号、合同面积、出租状态');
  return records.map((values,i)=>{if(values.length!==headers.length)throw new Error('CSV 第 '+(i+2)+' 行列数与表头不一致');return Object.fromEntries(headers.map((key,j)=>[key,values[j].trim()]));});
@@ -4770,6 +4780,72 @@ Object.assign(bEnglishPhrases,{'跟进处理':'Handle Lead','当前岗位无跟�
 
 /* Customer records share contracts, billing, points and work-order data. */
 const cpState={company:'',tab:'identity',filters:{company:'',unit:'',expiryFrom:'',expiryTo:'',status:'all'}};
+const cpImportState={token:0,rows:[],errors:[],filename:'',loading:false};
+function cpCompanyKey(name){return oCoordCompany(String(name||'').normalize('NFKC').trim()).replace(/\s+/g,'').toLowerCase();}
+function cpNewCustomer(){
+ if(!cpCanEdit())return;cpImportState.token++;
+ openDialog('新增客户','<div class="cp-new-options"><button type="button" aria-label="单个新增" onclick="cpCreateForm()"><span class="cp-new-option-icon">'+navIcon('customers')+'</span><strong>单个新增</strong><small>填写企业、联系人和关联单元，建立客户档案</small></button><button type="button" aria-label="批量导入" onclick="cpOpenCustomerImport()"><span class="cp-new-option-icon">'+navIcon('assets')+'</span><strong>批量导入</strong><small>下载 CSV 模板，校验并预览后批量新增</small></button></div>');
+}
+function cpCreateForm(){
+ if(!cpCanEdit())return;cpImportState.token++;
+ openDialog('单个新增客户','<form id="cp-create-form"><div class="cp-form-grid"><label>企业名称<input name="company" maxlength="100" required placeholder="填写完整企业名称"></label><label>统一社会信用代码<input name="creditCode" maxlength="18" placeholder="选填，18 位信用代码"></label><label>联系人<input name="contact" maxlength="60" required placeholder="填写联系人姓名"></label><label>联系电话<input name="phone" type="tel" maxlength="24" placeholder="选填，手机号或固定电话"></label><label class="cp-new-unit-field">关联单元<input name="units" maxlength="2000" required placeholder="如：307、308；多个单元用顿号或逗号分隔"></label></div><p class="cp-footnote">关联单元须已登记在资产台账。客户建档后，可在“租赁合同”中登记合同与租期。</p></form>',btn('保存客户','cpSaveNewCustomer()',true));
+}
+function cpValidateNewCustomers(rows){
+ const items=[],errors=[],names=new Set(customers.map(c=>cpCompanyKey(c[0]))),codes=new Set(Object.values(cpProfiles).map(p=>String(p.creditCode||'').trim().toUpperCase()).filter(Boolean)),owners=new Map();
+ for(const c of customers)if(cpLeaseStatus(c)!=='已退租')for(const id of cpUnits(c))owners.set(id,c[0]);
+ if(!rows.length||rows.length>200)return {items,errors:['每批须包含 1–200 家客户']};
+ rows.forEach((r,index)=>{
+  const problems=[],company=String(r.company||'').normalize('NFKC').trim(),key=cpCompanyKey(company),contact=String(r.contact||'').trim(),phone=String(r.phone||'').trim(),creditCode=String(r.creditCode||'').trim().toUpperCase(),ids=String(r.units||'').split(/[、,，/;\s；]+/).filter(Boolean);
+  if(!company||company.length>100||/[\u0000-\u001f\u007f]/.test(company))problems.push('企业名称须为 1–100 字');else if(names.has(key))problems.push('企业与现有档案或本批记录重复');else names.add(key);
+  if(!contact||contact.length>60||/[\u0000-\u001f\u007f]/.test(contact))problems.push('联系人须为 1–60 字');
+  if(phone&&!/^[+\d][\d ()-]{5,23}$/.test(phone))problems.push('联系电话格式不正确');
+  if(creditCode){if(!/^[0-9A-Z]{18}$/.test(creditCode))problems.push('信用代码须为 18 位字母或数字');else if(codes.has(creditCode))problems.push('信用代码与现有档案或本批记录重复');else codes.add(creditCode);}
+  if(!ids.length)problems.push('请填写关联单元');else if(new Set(ids).size!==ids.length)problems.push('关联单元重复');
+  for(const id of new Set(ids)){
+   const unit=bFindUnit(id);if(!unit){problems.push('单元 '+id+' 未在资产台账登记');continue;}
+   if(owners.has(id))problems.push('单元 '+id+' 已关联 '+owners.get(id));else owners.set(id,company);
+   const tenant=unit.unitLeaseMeta?.[id]?.company||unit.tenant;
+   if(/自用|锁定/.test(unit.status))problems.push('单元 '+id+' 为自用或锁定状态');
+   else if(unit.status!=='未出租'&&tenant&&!['—','待补充租户'].includes(tenant)&&cpCompanyKey(tenant)!==key)problems.push('单元 '+id+' 已有其他租户，请先处理原租赁关系');
+  }
+  if(problems.length)errors.push('第 '+(index+1)+' 条：'+problems.join('；'));else items.push({company,contact,phone,creditCode,ids});
+ });return {items,errors};
+}
+function cpCommitNewCustomers(rows,source){
+ if(!cpCanEdit())return false;const checked=cpValidateNewCustomers(rows);
+ if(checked.errors.length){if($('#cp-import-preview')){cpImportState.errors=checked.errors;cpRenderCustomerImport();}else toast(checked.errors[0]);return false;}
+ const created=checked.items.map(r=>[r.company,r.ids.join('、'),r.contact,'—','¥ 0.00','0','待开通']);
+ customers.unshift(...created);for(const r of checked.items)cpProfiles[r.company]={creditCode:r.creditCode,phone:r.phone,mainAccount:'',billing:{},agreements:[]};
+ log(source+'客户',checked.items.map(r=>r.company).join('、'),'无',checked.items.length+' 家企业；已登记联系人与关联单元');
+ cpImportState.token++;cpImportState.rows=[];cpImportState.errors=[];modal.close();cpResetFilters();toast('已新增 '+checked.items.length+' 家客户');return true;
+}
+function cpSaveNewCustomer(){if(!cpCanEdit())return;const form=$('#cp-create-form');if(!form?.reportValidity())return;cpCommitNewCustomers([Object.fromEntries(new FormData(form))],'单个新增');}
+function cpParseImportRows(records){
+ const aliases={'企业名称':'company','企业':'company','关联单元':'units','单元编号':'units','单元':'units','联系人':'contact','联系电话':'phone','统一社会信用代码':'creditCode'},headers=records[0].map(h=>aliases[h.trim()]);
+ if(headers.some(h=>!h)||new Set(headers).size!==headers.length||['company','units','contact'].some(h=>!headers.includes(h)))throw new Error('请使用客户模板表头，至少包含企业名称、关联单元、联系人');
+ return records.slice(1).map((values,i)=>{if(values.length!==headers.length)throw new Error('CSV 第 '+(i+2)+' 行列数与表头不一致');return Object.fromEntries(headers.map((key,j)=>[key,values[j].trim()]));});
+}
+function cpOpenCustomerImport(){
+ if(!cpCanEdit())return;cpImportState.token++;Object.assign(cpImportState,{rows:[],errors:[],filename:'',loading:false});
+ openDialog('批量导入客户','<section class="cp-customer-import"><div class="a-import-guide"><div><b>批量导入 CSV</b><p>每批最多 200 家客户、文件不超过 2 MB。请将表格保存为 CSV UTF-8 格式。</p></div>'+btn('下载模板','cpDownloadCustomerTemplate()')+'</div><label class="a-file-picker">选择客户 CSV 文件<input id="cp-import-file" type="file" accept=".csv,text/csv" onchange="cpReadCustomerImport(this.files[0])"></label><div id="cp-import-preview" aria-live="polite"><div class="a-import-empty">请选择填写好的客户 CSV 文件</div></div></section>','<button type="button" class="primary" id="cp-import-confirm" disabled onclick="cpConfirmCustomerImport()">确认导入</button>');
+}
+async function cpReadCustomerImport(file){
+ if(!cpCanEdit())return;const token=++cpImportState.token;Object.assign(cpImportState,{rows:[],errors:[],filename:file?.name||'',loading:Boolean(file)});cpRenderCustomerImport();if(!file)return;
+ try{if(!/\.csv$/i.test(file.name)||!file.size||file.size>2*1024*1024)throw new Error('请选择 2 MB 以内的非空 CSV 文件');const text=await file.text();if(token!==cpImportState.token||!cpCanEdit()||!$('#cp-import-preview'))return;cpImportState.rows=aParseCSV(text,'customer');cpImportState.errors=cpValidateNewCustomers(cpImportState.rows).errors;}
+ catch(error){if(token!==cpImportState.token)return;cpImportState.rows=[];cpImportState.errors=[error.message||'文件读取失败，请检查 CSV 格式'];}
+ finally{if(token===cpImportState.token){cpImportState.loading=false;cpRenderCustomerImport();}}
+}
+function cpRenderCustomerImport(){
+ const root=$('#cp-import-preview'),confirm=$('#cp-import-confirm');if(!root)return;
+ const checked=cpImportState.rows.length?cpValidateNewCustomers(cpImportState.rows):{items:[],errors:[]},errors=cpImportState.errors.length?cpImportState.errors:checked.errors;
+ let html=cpImportState.loading?'<div class="a-import-empty">正在读取文件…</div>':!cpImportState.filename?'<div class="a-import-empty">请选择填写好的客户 CSV 文件</div>':'<div class="a-import-summary"><b>'+esc(cpImportState.filename)+'</b><span>'+cpImportState.rows.length+' 条记录 · '+(errors.length?'存在错误':'校验通过')+'</span></div>';
+ if(!cpImportState.loading&&cpImportState.filename){if(errors.length)html+='<div class="a-import-errors" role="alert"><b>请修正后重新上传，本批不会写入</b><ul>'+errors.slice(0,20).map(e=>'<li>'+esc(e)+'</li>').join('')+'</ul>'+(errors.length>20?'<p>还有 '+(errors.length-20)+' 条错误</p>':'')+'</div>';if(checked.items.length)html+='<div class="a-import-table">'+table(['企业名称','关联单元','联系人','联系电话','统一社会信用代码'],checked.items.slice(0,20).map(r=>[r.company,r.ids.join(' / '),r.contact,r.phone||'—',r.creditCode||'—']))+'</div>'+(checked.items.length>20?'<p class="cp-footnote">预览前 20 条，确认后导入全部校验通过的记录。</p>':'');}
+ root.innerHTML=html;if(confirm)confirm.disabled=cpImportState.loading||!checked.items.length||Boolean(errors.length);bApplyLanguage(root);
+}
+function cpConfirmCustomerImport(){if(!cpCanEdit()||cpImportState.loading||!$('#cp-import-preview')||!cpImportState.rows.length)return;cpCommitNewCustomers(cpImportState.rows,'批量导入');}
+function cpDownloadCustomerTemplate(){
+ if(!cpCanEdit())return;const used=new Set(customers.filter(c=>cpLeaseStatus(c)!=='已退租').flatMap(cpUnits)),unit=buildingFloors.flatMap(f=>f.spaces).filter(u=>u.status==='未出租').flatMap(u=>u.ids).find(id=>!used.has(id))||'',rows=[['企业名称','关联单元','联系人','联系电话','统一社会信用代码'],['示例新租户有限公司',unit,'王先生','13800138000','']],cell=v=>'"'+String(v).replaceAll('"','""')+'"',url=URL.createObjectURL(new Blob(['\uFEFF'+rows.map(r=>r.map(cell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'})),link=document.createElement('a');link.href=url;link.download='国际银行中心-客户导入模板.csv';link.click();URL.revokeObjectURL(url);
+}
 const cpProfiles=Object.create(null);
 const cpTabs=[['identity','企业与账号'],['leases','租赁合同'],['billing','计费信息'],['agreements','服务协议'],['services','服务工单'],['finance','欠费与积分']];
 function cpCustomer(name){return customers.find(c=>c[0]===name||oCoordCompany(c[0])===oCoordCompany(name));}
@@ -4783,7 +4859,7 @@ function cpContracts(customer){return ctContracts.filter(c=>oCoordCompany(c.comp
 function cpNumber(value){const n=Number(String(value??'').replace(/[¥￥,\s]/g,''));return Number.isFinite(n)?n:0;}
 function cpMoney(value){return '¥ '+cpNumber(value).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function cpExpiry(customer){const ends=cpContracts(customer).filter(c=>!c.renewedBy&&rbValidDate(c.end)).map(c=>c.end).sort();return ends.at(-1)||customer[3]||'—';}
-function cpLeaseStatus(customer){const records=cpContracts(customer).filter(c=>!c.renewedBy),today=cpToday(),end=cpExpiry(customer);if(records.length&&records.every(c=>c.status==='已退租'))return '已退租';if(records.some(c=>c.status==='退租中'))return '退租中';if(rbValidDate(end)&&end<today)return '已到期';if(records.some(c=>c.renewalOf))return '已续租';const soon=new Date(today+'T00:00:00Z');soon.setUTCDate(soon.getUTCDate()+30);return rbValidDate(end)&&end<=soon.toISOString().slice(0,10)?'待续租':'在租';}
+function cpLeaseStatus(customer){const records=cpContracts(customer).filter(c=>!c.renewedBy),today=cpToday(),end=cpExpiry(customer);if(!records.length&&!rbValidDate(end))return '待签约';if(records.length&&records.every(c=>c.status==='已退租'))return '已退租';if(records.some(c=>c.status==='退租中'))return '退租中';if(rbValidDate(end)&&end<today)return '已到期';if(records.some(c=>c.renewalOf))return '已续租';const soon=new Date(today+'T00:00:00Z');soon.setUTCDate(soon.getUTCDate()+30);return rbValidDate(end)&&end<=soon.toISOString().slice(0,10)?'待续租':'在租';}
 function cpBills(customer){return bills.filter(b=>oCoordCompany(b[1])===oCoordCompany(customer[0]));}
 function cpDebt(customer,unitIds=null){return cpBills(customer).filter(b=>b[6]!=='已支付'&&(!unitIds||unitIds.includes(String(b[2])))).reduce((sum,b)=>sum+cpNumber(b[5]),0);}
 function cpAccounts(customer){return oPtState.accounts.filter(a=>oCoordCompany(a.company)===oCoordCompany(customer[0]));}
@@ -4797,7 +4873,7 @@ function cpTableRow(c){return [c[0],cpUnits(c).join(' / '),c[2],cpExpiry(c),cpLe
 function cpApplyFilters(event){event.preventDefault();const data=new FormData(event.currentTarget),next=Object.fromEntries(data);if(next.expiryFrom&&next.expiryTo&&next.expiryFrom>next.expiryTo)return toast('合同到期开始日期不能晚于结束日期');Object.assign(cpState.filters,next);query='';filter='';render();}
 function cpResetFilters(){Object.assign(cpState.filters,{company:'',unit:'',expiryFrom:'',expiryTo:'',status:'all'});query='';filter='';render();}
 function cpCustomerPage(){
- const f=cpState.filters,rows=cpRows();return heading('客户档案','')+cards([['企业档案',customers.length,'一户一档'],['关联单元',new Set(customers.flatMap(cpUnits)).size,'按独立单元统计'],['待续租企业',customers.filter(c=>cpLeaseStatus(c)==='待续租').length,'合同 30 天内到期'],['欠费企业',customers.filter(c=>cpDebt(c)>0).length,'按未结清账单统计']])+`<section class="panel cp-register"><form class="a-filter-form cp-filter-form" onsubmit="cpApplyFilters(event)"><label class="a-filter-field"><span>企业</span><input name="company" aria-label="查询企业" placeholder="输入企业名称" value="${esc(f.company)}"></label><label class="a-filter-field"><span>单元</span><input name="unit" aria-label="查询客户单元" placeholder="输入单元编号" value="${esc(f.unit)}"></label><label class="a-filter-field"><span>租赁状态</span><select name="status">${['all','在租','待续租','已到期','已续租','退租中','已退租'].map(s=>`<option value="${s}" ${f.status===s?'selected':''}>${s==='all'?'全部状态':s}</option>`).join('')}</select></label><div class="a-filter-field a-expiry-filter"><span>合同到期</span><div class="a-expiry-range"><input name="expiryFrom" aria-label="客户合同到期开始" type="date" value="${esc(f.expiryFrom)}"><span>至</span><input name="expiryTo" aria-label="客户合同到期结束" type="date" value="${esc(f.expiryTo)}"></div></div><div class="a-filter-actions"><button class="primary" type="submit">查询</button><button type="button" onclick="cpResetFilters()">重置</button></div></form><div class="a-register-toolbar"><span>共 ${rows.length} 家企业</span><div class="a-register-actions">${btn('导出档案','exportCurrent()')}</div></div>${table(['企业名称','关联单元','联系人','合同到期','租赁状态','未结清金额','可用积分','主账号状态'],rows.map(cpTableRow),r=>btn('查看档案',oCoordAction('customerDetail',r[0])))}</section>`;
+ const f=cpState.filters,rows=cpRows();return heading('客户档案','')+cards([['企业档案',customers.length,'一户一档'],['关联单元',new Set(customers.flatMap(cpUnits)).size,'按独立单元统计'],['待续租企业',customers.filter(c=>cpLeaseStatus(c)==='待续租').length,'合同 30 天内到期'],['欠费企业',customers.filter(c=>cpDebt(c)>0).length,'按未结清账单统计']])+`<section class="panel cp-register"><form class="a-filter-form cp-filter-form" onsubmit="cpApplyFilters(event)"><label class="a-filter-field"><span>企业</span><input name="company" aria-label="查询企业" placeholder="输入企业名称" value="${esc(f.company)}"></label><label class="a-filter-field"><span>单元</span><input name="unit" aria-label="查询客户单元" placeholder="输入单元编号" value="${esc(f.unit)}"></label><label class="a-filter-field"><span>租赁状态</span><select name="status">${['all','待签约','在租','待续租','已到期','已续租','退租中','已退租'].map(s=>`<option value="${s}" ${f.status===s?'selected':''}>${s==='all'?'全部状态':s}</option>`).join('')}</select></label><div class="a-filter-field a-expiry-filter"><span>合同到期</span><div class="a-expiry-range"><input name="expiryFrom" aria-label="客户合同到期开始" type="date" value="${esc(f.expiryFrom)}"><span>至</span><input name="expiryTo" aria-label="客户合同到期结束" type="date" value="${esc(f.expiryTo)}"></div></div><div class="a-filter-actions"><button class="primary" type="submit">查询</button><button type="button" onclick="cpResetFilters()">重置</button></div></form><div class="a-register-toolbar"><span>共 ${rows.length} 家企业</span><div class="a-register-actions">${cpCanEdit()?btn('新增客户','cpNewCustomer()',true):''}${btn('导出档案','exportCurrent()')}</div></div>${table(['企业名称','关联单元','联系人','合同到期','租赁状态','未结清金额','可用积分','主账号状态'],rows.map(cpTableRow),r=>btn('查看档案',oCoordAction('customerDetail',r[0])))}</section>`;
 }
 function cpIdentityView(c){const p=cpProfile(c),staff=oCoordState.records.filter(r=>r.kind==='account'&&oCoordCompany(r.company)===oCoordCompany(c[0]));return cpSection('企业主体信息',cpKV([['企业名称',c[0]],['统一社会信用代码',p.creditCode],['联系人',c[2]],['联系电话',p.phone],['主账号',p.mainAccount],['关联单元',cpUnits(c).join(' / ')]]))+cpSection('主账号与员工子账号',table(['账号类型','姓名 / 账号','联系电话','账号状态','权限范围'],[['企业主账号',p.mainAccount||c[2],p.phone||'待补充',c[6],'费用查询、缴费及企业成员管理'],...staff.map(r=>['员工子账号',r.name,r.phone,r.status,'服务申请、访客登记'])]));}
 function cpLeasesView(c){const records=cpContracts(c);if(!records.length)return cpSection('租赁合同','<div class="cp-empty">尚未登记租赁合同，请补充合同起止日、租金和租赁条款。</div>',cpCanLease()?btn('登记合同',oCoordAction('cpEditLease',c[0],'','register'),true):'');return records.map(contract=>{const docs=contract.attachments.length?btn('查看合同',`ctDetail('${contract.id}')`):ctNeedsUpload(contract)?btn('上传合同',`ctOpenUpload('${contract.id}')`):'';const active=!['已退租','已续租'].includes(contract.status),actions=docs+(cpCanLease()&&active?(contract.status==='退租中'?'':btn('维护合同',oCoordAction('cpEditLease',c[0],contract.id,'edit'))+btn('办理续租',oCoordAction('cpEditLease',c[0],contract.id,'renew')))+btn(contract.status==='退租中'?'退租进度':'办理退租',`cpOpenExit('${contract.id}')`):'');return cpSection(contract.id,`<div class="cp-contract-status">${badge(contract.status)}<span>${esc(contract.units)} · ${contract.attachments.length?'已上传 '+contract.attachments.length+' 个附件':'合同文件未上传'}</span></div>`+cpKV([['合同起始日',contract.start],['合同到期日',contract.end],['月租金',contract.rent],['押金',contract.deposit==null?'待补充':cpMoney(contract.deposit)],['免租期',contract.freeDays==null?'待补充':contract.freeDays+' 天'],['续租来源',contract.renewalOf||'—']]),actions);}).join('');}
@@ -4828,7 +4904,7 @@ function cpSaveAgreement(name){
 function cpOpenAgreement(name,id){if(!cpCanRead())return;const c=cpCustomer(name),file=c&&cpProfile(c).agreements.find(f=>f.id===id);if(!file)return;const download=`<a class="a-floorplan-download" href="${esc(file.url)}" download="${esc(file.name)}">下载附件</a>`;openDialog('服务协议 · '+file.kind,`<p data-i18n-skip>${esc(file.name)}</p><div class="a-floorplan-viewer">${file.viewKind==='pdf'?`<iframe src="${esc(file.url)}" title="服务协议 PDF 预览"></iframe>`:file.viewKind==='image'?`<img src="${esc(file.url)}" alt="${esc(file.name)}">`:'<div class="cp-empty">Word 文件请下载后查看</div>'}</div>`,btn('返回客户档案',oCoordAction('cpShowCustomer',c[0],'agreements'))+download);}
 
 function cpEditLease(name,id='',action='edit'){
- if(!cpCanLease())return;const customer=cpCustomer(name),contract=id?ctFind(id):null;if(!customer||id&&!cpContracts(customer).includes(contract))return;if(contract&&['退租中','已退租','已续租'].includes(contract.status))return toast('请先处理当前合同状态');let start=contract&&rbValidDate(contract.start)?contract.start:cpToday();if(action==='renew'&&rbValidDate(contract.end)){const day=new Date(contract.end+'T00:00:00Z');day.setUTCDate(day.getUTCDate()+1);start=day.toISOString().slice(0,10);}const end=action==='renew'?'':contract?.end&&rbValidDate(contract.end)?contract.end:customer[3];
+ if(!cpCanLease())return;const customer=cpCustomer(name),contract=id?ctFind(id):null;if(!customer||id&&!cpContracts(customer).includes(contract))return;if(contract&&['退租中','已退租','已续租'].includes(contract.status))return toast('请先处理当前合同状态');let start=contract&&rbValidDate(contract.start)?contract.start:cpToday();if(action==='renew'&&rbValidDate(contract.end)){const day=new Date(contract.end+'T00:00:00Z');day.setUTCDate(day.getUTCDate()+1);start=day.toISOString().slice(0,10);}const end=action==='renew'?'':contract?.end&&rbValidDate(contract.end)?contract.end:rbValidDate(customer[3])?customer[3]:'';
  openDialog(action==='renew'?'办理合同续租':contract?'维护租赁合同':'登记租赁合同',`<form id="cp-lease-form"><p>${esc(customer[0])} · ${esc(contract?.units||customer[1])}</p><div class="cp-form-grid"><label>合同起始日<input name="start" type="date" value="${start}" required></label><label>合同到期日<input name="end" type="date" value="${esc(end||'')}" required></label><label>月租金（元）<input name="rent" type="number" min="0" max="100000000" step="0.01" value="${contract&&/\d/.test(String(contract.rent))?cpNumber(contract.rent):''}" required></label><label>押金（元）<input name="deposit" type="number" min="0" max="100000000" step="0.01" value="${contract?.deposit??''}" required></label><label>免租期（天）<input name="freeDays" type="number" min="0" max="3660" step="1" value="${contract?.freeDays??0}" required></label></div><label>变更说明<textarea name="reason" maxlength="300" required></textarea></label>${action==='renew'?'<p class="hint">续租将建立新合同，原合同与附件保留。新到期日同步到客户档案和资产台账。</p>':''}</form>`,btn(action==='renew'?'确认续租':'保存合同',oCoordAction('cpSaveLease',customer[0],id,action),true));
 }
 function cpSaveLease(name,id,action){
@@ -5284,7 +5360,7 @@ bI18nEnglishPattern=null;
 const uiUploads=new WeakMap();
 function uiUploadPolicy(input){
  const form=input.form?.id||'';let maxBytes=0,maxFiles=input.multiple?0:1;
- if(['a-import-file','bl-import-file'].includes(input.id)){maxBytes=2*1024*1024;maxFiles=1;}
+ if(['a-import-file','bl-import-file','cp-import-file'].includes(input.id)){maxBytes=2*1024*1024;maxFiles=1;}
  else if(input.name==='floorPlan'||['ct-upload-form','cp-agreement-form'].includes(form)){maxBytes=20*1024*1024;maxFiles=input.multiple?10:1;}
  else if(/wChooseFiles/.test(input.getAttribute('onchange')||'')){maxBytes=10*1024*1024;maxFiles=6;}
  else if(['o-pt-product-form','o-ct-content-form','o-ct-listing-form','oco-manual-receipt'].includes(form)){maxBytes=10*1024*1024;maxFiles=input.multiple?(form==='oco-manual-receipt'?6:0):1;}
